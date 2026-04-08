@@ -1,11 +1,12 @@
 # 纹身 AI 设计生成网站 — MVP 产品需求文档
 
-**文档版本：** v1.1  
+**文档版本：** v1.2  
 **日期：** 2026-04-08  
 **项目代号：** InkGen  
 **预算上限：** ¥1000 人民币  
 
-> **v1.1 更新说明：** 将「用户账号系统 / 登录注册」和「付费 / 充值功能」从 Out of Scope 提升为 MVP 核心功能，同步更新技术方案、预算、开发计划。
+> **v1.1 更新说明：** 将「用户账号系统 / 登录注册」和「付费 / 充值功能」从 Out of Scope 提升为 MVP 核心功能。  
+> **v1.2 更新说明：** 登录方式新增 Google OAuth（面向国际用户），移除手机号/验证码方式；支付从微信/支付宝切换为 PayPal（面向海外用户）；Prompt 处理新增英文输入检测，英文描述跳过翻译直接使用。
 
 ---
 
@@ -22,8 +23,8 @@
 
 上线一个可用的 Web 应用，实现：
 
-> **用户注册登录 → 输入文字描述 + 选择纹身风格 → AI 生成"能纹得出来"的纹身设计图 → 下载使用**  
-> **免费额度用完后，通过充值继续生成**
+> **用户登录（Google OAuth / 邮箱） → 输入文字描述 + 选择纹身风格 → AI 生成"能纹得出来"的纹身设计图 → 下载使用**  
+> **免费额度用完后，通过 PayPal 充值继续生成**
 
 ### 1.3 成功指标（MVP 阶段）
 
@@ -42,7 +43,7 @@
 
 ### 主要用户
 
-- **纹身爱好者**：有纹身意向，想先看到效果再跟纹身师沟通
+- **纹身爱好者**：有纹身意向，想先看到效果再跟纹身师沟通（以海外用户为主）
 - **纹身师**：需要快速出草稿/参考图给客户确认
 
 ### 用户核心诉求
@@ -72,12 +73,16 @@
 
 #### F2：文字描述输入
 
-- 支持中文输入（后端自动翻译为英文 prompt）
-- 字数限制：≤ 100 字
-- 提供示例引导文字，如：
-  - "一只展翅的老鹰，霸气"
-  - "玫瑰花与骷髅组合，暗黑风"
-  - "极简的山脉轮廓线"
+- 支持中文和英文输入
+- **语言自动检测**：
+  - 若输入为**英文**：直接使用，跳过翻译，降低延迟和成本
+  - 若输入为**中文**：调用翻译 API 转为英文 prompt
+  - 判断逻辑：检测文本中 ASCII 字母占比，> 80% 视为英文
+- 字数限制：≤ 200 字符（英文）/ ≤ 100 汉字（中文）
+- 提供双语示例引导：
+  - "一只展翅的老鹰，霸气" / "A fierce eagle with wings spread"
+  - "玫瑰花与骷髅组合，暗黑风" / "Rose and skull combination, dark style"
+  - "极简的山脉轮廓线" / "Minimalist mountain ridge outline"
 
 #### F3：身体部位选择（影响构图比例）
 
@@ -113,39 +118,42 @@
 
 **功能说明：**
 
-用户需注册账号后方可使用生图功能（访客可浏览首页和风格示例）。
+用户需登录后方可使用生图功能（访客可浏览首页和风格示例）。主要面向海外用户，采用 OAuth 和邮箱两种方式，无需手机号。
 
-**注册 / 登录方式：**
+**登录 / 注册方式：**
 
-| 方式 | 说明 |
-|------|------|
-| 手机号 + 验证码 | 国内主流，低门槛 |
-| 微信一键登录 | （二期，MVP 可不做） |
-| 邮箱 + 密码 | 备选，供非国内用户使用 |
+| 方式 | 说明 | 优先级 |
+|------|------|--------|
+| **Google OAuth** | 一键登录，国际用户首选，无需填写任何信息 | 主推 ⭐ |
+| **邮箱 + 密码** | 备选方式，覆盖无 Google 账号用户 | 备选 |
+
+> **注：** 手机号/验证码方式不做，微信登录放二期。
 
 **用户信息：**
 
 | 字段 | 说明 |
 |------|------|
-| user_id | 系统唯一 ID |
-| 手机号 / 邮箱 | 登录凭证 |
-| 昵称 | 可选，默认"用户XXXX" |
-| 注册时间 | 系统记录 |
-| 积分余额 | 生图消耗积分，充值可增加 |
-| 累计生图数 | 用于数据统计 |
+| user_id | 系统唯一 ID（UUID） |
+| email | 登录凭证（来自 Google OAuth 或手动填写） |
+| name | 显示名称（Google 授权自动获取） |
+| avatar_url | 头像（Google 授权自动获取） |
+| oauth_provider | 登录来源（google / email） |
+| credits | 生图积分余额，初始 30 |
+| created_at | 注册时间 |
+| total_generations | 累计生图数 |
 
 **权限控制：**
 
 | 用户类型 | 每日免费生图次数 | 历史记录 | 高清下载 |
 |----------|----------------|----------|----------|
-| 未登录 | 0（需注册） | ❌ | ❌ |
-| 免费用户 | 3 次 | ✅（最近20张） | ❌ |
+| 未登录 | 0（需登录） | ❌ | ❌ |
+| 免费用户 | 3 次 | ✅（最近 20 张） | ❌ |
 | 付费用户 | 不限（按积分扣） | ✅（全部） | ✅ |
 
 **安全要求：**
-- 验证码有效期 5 分钟，同一手机号每分钟限发 1 次
-- JWT Token 鉴权，有效期 7 天（支持刷新）
-- 密码加密存储（bcrypt）
+- NextAuth.js 管理 OAuth 会话，JWT Token 有效期 7 天（支持刷新）
+- 邮箱密码用 bcrypt 加密存储
+- HTTPS 全程加密
 
 ---
 
@@ -157,35 +165,37 @@
 
 | 操作 | 积分变动 |
 |------|---------|
-| 新用户注册 | +30 积分（可生成 3 张） |
+| 新用户首次登录 | +30 积分（可生成 3 张） |
 | 每次生图（标准） | -10 积分 |
 | 每次生图（高清 / 变体） | -20 积分 |
 | 充值（见下方套餐） | 按套餐增加 |
 
-**充值套餐：**
+**充值套餐（USD 定价，面向国际用户）：**
 
 | 套餐 | 价格 | 积分 | 单张成本 | 备注 |
 |------|------|------|----------|------|
-| 体验包 | ¥9.9 | 100 积分 | ≈¥0.99/张 | 首充推荐 |
-| 标准包 | ¥29.9 | 400 积分 | ≈¥0.75/张 | 最受欢迎 |
-| 专业包 | ¥99 | 1500 积分 | ≈¥0.66/张 | 高频用户 |
-| 纹身师包 | ¥299 | 5000 积分 | ≈¥0.60/张 | B 端用户 |
+| Starter | $1.99 | 100 积分 | ≈$0.20/张 | 首充推荐 |
+| Standard | $4.99 | 300 积分 | ≈$0.17/张 | 最受欢迎 |
+| Pro | $14.99 | 1200 积分 | ≈$0.12/张 | 高频用户 |
+| Artist | $39.99 | 4000 积分 | ≈$0.10/张 | 纹身师专用 |
 
 **支付方式：**
 
 | 方式 | 说明 |
 |------|------|
-| 微信支付 | 主推，国内用户首选 |
-| 支付宝 | 备选 |
+| **PayPal** | 主推，国际主流，支持信用卡 + PayPal 余额 |
 
-**实现方案：**
-- 接入**微信支付商户号**（需营业执照，或使用第三方聚合支付如 Ping++/收钱吧）
-- 支付回调更新用户积分余额（原子操作，防止重复到账）
-- 订单记录存储（order_id、金额、积分、支付时间、状态）
+> **注：** 微信支付、支付宝不做。PayPal 支持个人开发者快速接入，无需营业执照。
+
+**PayPal 接入方案：**
+- 使用 **PayPal Checkout SDK**（前端）+ **PayPal Orders API**（后端）
+- 支持 PayPal 余额付款和信用卡直付（Debit/Credit Card）
+- 支付成功后 webhook 回调更新积分（幂等处理防重复）
+- 沙盒环境测试完成后切换生产环境
 
 **前端页面：**
 - 个人中心 → 积分余额 + 充值入口
-- 充值页面 → 套餐选择 → 微信/支付宝二维码 → 支付成功提示
+- 充值页面 → 套餐选择 → PayPal 支付按钮 → 支付成功提示
 - 消费明细（最近 20 条记录）
 
 ---
@@ -211,7 +221,9 @@
 
 ### 3.3 不做（Out of Scope，MVP 阶段）
 
+- ❌ 手机号 / 短信验证码登录
 - ❌ 微信一键登录（二期实现）
+- ❌ 微信支付 / 支付宝
 - ❌ 纹身师入驻/对接
 - ❌ 社区展示墙
 - ❌ 图片编辑功能
@@ -228,13 +240,13 @@
 | 前端框架 | Next.js 14（App Router） | 全栈，部署简单 |
 | UI 样式 | Tailwind CSS + shadcn/ui | 开发快，风格统一 |
 | AI 生图 | Replicate API | 按量付费，无月费 |
-| 中文翻译 | 百度翻译 API 免费版 | 免费 50万字/月 |
+| 语言检测 | 前端/后端正则检测 | 英文跳过翻译，中文调用翻译 API |
+| 中文翻译 | 百度翻译 API 免费版 | 免费 50万字/月，仅中文输入时调用 |
 | 部署 | Vercel 免费套餐 | 免费，全球 CDN |
 | 图片存储 | Cloudflare R2 | 免费 10GB |
 | 数据库 | PostgreSQL（Supabase 免费版） | 存用户/订单/积分数据 |
-| 用户认证 | NextAuth.js + JWT | 支持手机号/邮箱登录 |
-| 短信验证码 | 阿里云短信服务 | 约 ¥0.045/条，稳定 |
-| 支付 | 微信支付 / Ping++ 聚合支付 | 快速接入，支持个人开发者 |
+| 用户认证 | NextAuth.js | 支持 Google OAuth + 邮箱密码 |
+| 支付 | PayPal Checkout SDK + Orders API | 国际主流，个人开发者可快速接入 |
 
 ### 4.2 数据库表设计
 
@@ -242,14 +254,17 @@
 
 ```sql
 CREATE TABLE users (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone       VARCHAR(20) UNIQUE,
-  email       VARCHAR(255) UNIQUE,
-  nickname    VARCHAR(50),
-  password    VARCHAR(255),          -- bcrypt hash，手机号登录可为空
-  credits     INTEGER DEFAULT 30,   -- 初始赠送30积分
-  created_at  TIMESTAMP DEFAULT NOW(),
-  updated_at  TIMESTAMP DEFAULT NOW()
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email           VARCHAR(255) UNIQUE NOT NULL,
+  name            VARCHAR(100),
+  avatar_url      TEXT,
+  password        VARCHAR(255),          -- bcrypt hash，OAuth 登录可为空
+  oauth_provider  VARCHAR(20),           -- 'google' | 'email'
+  oauth_id        VARCHAR(255),          -- Google sub ID
+  credits         INTEGER DEFAULT 30,    -- 初始赠送 30 积分
+  total_generations INTEGER DEFAULT 0,
+  created_at      TIMESTAMP DEFAULT NOW(),
+  updated_at      TIMESTAMP DEFAULT NOW()
 );
 ```
 
@@ -257,14 +272,15 @@ CREATE TABLE users (
 
 ```sql
 CREATE TABLE generations (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID REFERENCES users(id),
-  style       VARCHAR(50),
-  prompt_cn   TEXT,
-  prompt_en   TEXT,
-  image_url   TEXT,
-  credits_used INTEGER DEFAULT 10,
-  created_at  TIMESTAMP DEFAULT NOW()
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID REFERENCES users(id),
+  style         VARCHAR(50),
+  input_lang    VARCHAR(10),             -- 'en' | 'zh'
+  prompt_input  TEXT,                    -- 用户原始输入
+  prompt_en     TEXT,                    -- 最终英文 prompt
+  image_url     TEXT,
+  credits_used  INTEGER DEFAULT 10,
+  created_at    TIMESTAMP DEFAULT NOW()
 );
 ```
 
@@ -272,19 +288,33 @@ CREATE TABLE generations (
 
 ```sql
 CREATE TABLE orders (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      UUID REFERENCES users(id),
-  amount       DECIMAL(10,2),        -- 支付金额（元）
-  credits      INTEGER,              -- 到账积分
-  status       VARCHAR(20) DEFAULT 'pending',  -- pending/paid/failed
-  pay_method   VARCHAR(20),          -- wechat/alipay
-  pay_order_id VARCHAR(100),         -- 第三方支付单号
-  paid_at      TIMESTAMP,
-  created_at   TIMESTAMP DEFAULT NOW()
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID REFERENCES users(id),
+  amount_usd      DECIMAL(10,2),         -- 支付金额（USD）
+  credits         INTEGER,               -- 到账积分
+  status          VARCHAR(20) DEFAULT 'pending',  -- pending/paid/failed
+  pay_method      VARCHAR(20) DEFAULT 'paypal',
+  paypal_order_id VARCHAR(100) UNIQUE,   -- PayPal 订单 ID（幂等键）
+  paid_at         TIMESTAMP,
+  created_at      TIMESTAMP DEFAULT NOW()
 );
 ```
 
-### 4.3 核心 Prompt 模板
+### 4.3 Prompt 处理逻辑
+
+```
+用户输入描述
+    ↓
+语言检测（ASCII字母占比 > 80%？）
+    ├── YES（英文）→ 直接使用原文作为 prompt_en，跳过翻译
+    └── NO（中文/混合）→ 调用百度翻译 API → 得到 prompt_en
+    ↓
+组合：[风格基础词] + [prompt_en] + [纹身约束词] + [构图词]
+    ↓
+调用 Replicate API 生图
+```
+
+### 4.4 核心 Prompt 模板
 
 每种风格对应专属 prompt 结构：
 
@@ -319,10 +349,12 @@ neo traditional tattoo, decorative flourishes,
 jewel tones, detailed but wearable
 ```
 
-### 4.4 系统流程
+### 4.5 系统主流程
 
 ```
-用户注册/登录
+用户访问首页
+    ↓
+点击"Get Started" → Google OAuth 一键登录 / 邮箱登录
     ↓
 检查积分余额（< 10 则提示充值）
     ↓
@@ -332,11 +364,9 @@ jewel tones, detailed but wearable
     ↓
 验证用户身份 + 积分是否充足
     ↓
-百度翻译 API 将中文描述翻译为英文
+语言检测 → 英文直接用 / 中文调用百度翻译
     ↓
-组合风格 Prompt 模板 + 翻译结果 + 约束词
-    ↓
-调用 Replicate API 生图（flux-schnell）
+组合 Prompt → 调用 Replicate API 生图（flux-schnell）
     ↓
 生图成功 → 扣除积分 + 保存记录到数据库
     ↓
@@ -345,41 +375,53 @@ jewel tones, detailed but wearable
 用户预览 → 下载原图 / 线稿版
 ```
 
-### 4.5 支付流程
+### 4.6 PayPal 支付流程
 
 ```
 用户选择充值套餐
     ↓
-后端创建订单（status: pending）
+后端创建 PayPal Order（返回 order_id）
     ↓
-调用微信支付 API 生成二维码
+前端渲染 PayPal 支付按钮（PayPal JS SDK）
     ↓
-前端展示二维码（轮询支付状态）
+用户点击按钮 → 弹出 PayPal 支付窗口
     ↓
-用户扫码支付
+用户完成支付（PayPal 余额 / 信用卡）
     ↓
-微信回调通知后端（验签）
+PayPal Webhook 回调后端（验签）
     ↓
-更新订单状态 + 原子增加用户积分
+幂等检查（paypal_order_id 是否已处理）
     ↓
-前端收到成功通知，刷新积分余额
+更新订单状态 paid + 原子增加用户积分
+    ↓
+前端轮询确认，刷新积分余额 + 成功提示
 ```
 
-### 4.6 API 密钥管理
+### 4.7 API 密钥管理
 
 所有密钥通过 Vercel 环境变量管理，不硬编码：
 
 ```env
+# AI 生图
 REPLICATE_API_TOKEN=xxx
+
+# 翻译（仅中文输入时使用）
 BAIDU_TRANSLATE_APPID=xxx
 BAIDU_TRANSLATE_SECRET=xxx
-DATABASE_URL=xxx                    # Supabase PostgreSQL
+
+# 数据库
+DATABASE_URL=xxx                          # Supabase PostgreSQL
+
+# 用户认证
 NEXTAUTH_SECRET=xxx
 NEXTAUTH_URL=https://yourdomain.com
-ALIYUN_SMS_ACCESS_KEY=xxx
-ALIYUN_SMS_SECRET=xxx
-WECHAT_PAY_MCH_ID=xxx
-WECHAT_PAY_API_KEY=xxx
+GOOGLE_CLIENT_ID=xxx                      # Google OAuth
+GOOGLE_CLIENT_SECRET=xxx
+
+# 支付
+PAYPAL_CLIENT_ID=xxx
+PAYPAL_CLIENT_SECRET=xxx
+PAYPAL_WEBHOOK_ID=xxx
 ```
 
 ---
@@ -390,40 +432,40 @@ WECHAT_PAY_API_KEY=xxx
 
 ```
 首页（未登录可见）
-├── Header：Logo + 登录/注册按钮
-├── Hero：产品介绍 + CTA "立即体验"
+├── Header：Logo + "Sign in with Google" 按钮
+├── Hero：产品介绍 + CTA "Try for Free"
 └── 风格展示（6种风格示例图）
 
-登录/注册页
-├── 手机号 + 验证码登录
-├── 邮箱 + 密码登录（切换）
-└── 新用户注册送 30 积分提示
+登录页
+├── "Continue with Google"（主按钮，带 Google 图标）
+├── 分割线 "or"
+├── 邮箱 + 密码登录/注册（折叠表单）
+└── 新用户提示：Free 30 credits on signup
 
 主功能页（登录后）
-├── Header：Logo + 积分余额 + 用户头像
+├── Header：Logo + 积分余额 + 用户头像（Google 头像）
 ├── 左侧：输入区
 │   ├── 风格选择（图标卡片，6选1）
-│   ├── 文字描述输入框
+│   ├── 文字描述输入框（支持中/英文）
 │   ├── 身体部位选择（下拉）
-│   └── "生成设计图" 按钮（显示消耗积分数）
+│   └── "Generate" 按钮（显示消耗积分数）
 │
 └── 右侧：结果区
     ├── 生成中状态（骨架屏 + 进度提示）
     ├── 结果图展示
     ├── "能纹性" 提示标签
-    ├── 下载原图 / 下载线稿 按钮
-    └── 生成变体 按钮（预留）
+    ├── Download PNG / Download Stencil 按钮
+    └── Generate Variants 按钮（预留）
 
-个人中心页
-├── 基本信息（昵称、手机号）
-├── 积分余额 + 充值按钮
+个人中心页（Account）
+├── 头像 + 名称 + 邮箱（来自 Google）
+├── Credits 余额 + "Top Up" 按钮
 ├── 消费明细（最近 20 条）
 └── 历史生图记录
 
-充值页
-├── 套餐选择（4档）
-├── 支付方式（微信/支付宝）
-├── 二维码展示
+充值页（Top Up Credits）
+├── 套餐选择（4档，USD 定价）
+├── PayPal 支付按钮（PayPal JS SDK 渲染）
 └── 支付成功/失败提示
 ```
 
@@ -432,6 +474,7 @@ WECHAT_PAY_API_KEY=xxx
 - 整体色调：深色背景（#0f0f0f）+ 白色文字 + 金色/红色点缀
 - 字体：标题用衬线字体，正文用无衬线字体
 - 风格参考：暗黑、艺术、专业纹身工作室感
+- UI 语言：英文为主（国际用户导向）
 
 ---
 
@@ -439,16 +482,16 @@ WECHAT_PAY_API_KEY=xxx
 
 | 项目 | 费用 | 备注 |
 |------|------|------|
-| 域名（.cn 或 .com） | ¥60-150/年 | 建议买 tattoospark.cn 或类似 |
-| Replicate API（测试期） | ¥200-300 | 约 2000-3000 张生图量 |
-| 百度翻译 API | ¥0 | 免费额度够用 |
-| Vercel 托管 | ¥0 | 免费套餐 |
-| Cloudflare R2 存储 | ¥0 | 免费 10GB |
-| Supabase 数据库 | ¥0 | 免费套餐（500MB） |
-| 阿里云短信（测试期） | ¥50 | 约 1000 条验证码 |
-| 微信支付开通费 | ¥0 | 企业主体免费；个人可用 Ping++ |
-| UI 素材/图标 | ¥0 | 用免费资源（Lucide、Unsplash） |
-| **合计** | **≈ ¥310-500** | **剩余预算可用于推广或应急** |
+| 域名（.com） | $10-15/年 | 建议 tattoospark.com 或 inkgen.io |
+| Replicate API（测试期） | $30-50 | 约 2000-3000 张生图量 |
+| 百度翻译 API | ¥0 | 免费额度够用，仅中文输入时调用 |
+| Vercel 托管 | $0 | 免费套餐 |
+| Cloudflare R2 存储 | $0 | 免费 10GB |
+| Supabase 数据库 | $0 | 免费套餐（500MB） |
+| Google OAuth | $0 | 免费，需在 Google Console 创建应用 |
+| PayPal 手续费 | 交易额 3.49% + $0.49 | 按成交收取，无月费 |
+| UI 素材/图标 | $0 | 用免费资源（Lucide、Unsplash） |
+| **合计（启动成本）** | **≈ $40-65** | **PayPal 手续费按实际交易收取** |
 
 ---
 
@@ -459,24 +502,25 @@ WECHAT_PAY_API_KEY=xxx
 - [ ] 初始化 Next.js 项目，部署到 Vercel
 - [ ] 完成首页 UI（风格选择 + 输入表单）
 - [ ] 接入 Replicate API（flux-schnell 模型）
-- [ ] 接入百度翻译 API
+- [ ] 实现语言检测逻辑（英文直接用，中文调百度翻译）
 - [ ] 实现 Prompt 拼装逻辑（6种风格）
 - [ ] 图片展示 + 原图下载
 
 ### Week 2：用户系统
 
 - [ ] 接入 Supabase PostgreSQL，建表（users / generations / orders）
-- [ ] 实现手机号 + 验证码注册/登录（阿里云短信）
-- [ ] 实现邮箱 + 密码注册/登录
+- [ ] 配置 Google OAuth（Google Cloud Console）
+- [ ] NextAuth.js 接入（Google + 邮箱密码）
 - [ ] JWT 鉴权中间件
 - [ ] 个人中心页面（积分余额 + 历史记录）
 - [ ] 积分扣减逻辑（生图前检查 + 生图后扣除）
 
 ### Week 3：支付系统 + 体验优化
 
-- [ ] 接入微信支付（或 Ping++ 聚合支付）
-- [ ] 充值套餐页面 + 二维码展示
-- [ ] 支付回调处理 + 积分到账
+- [ ] 注册 PayPal 开发者账号，创建应用（获取 Client ID/Secret）
+- [ ] 接入 PayPal Checkout SDK + Orders API
+- [ ] 充值套餐页面 + PayPal 按钮渲染
+- [ ] PayPal Webhook 回调处理 + 积分到账（幂等）
 - [ ] 消费明细页面
 - [ ] 黑白线稿版下载（Canvas 处理）
 - [ ] 移动端响应式适配
@@ -485,8 +529,8 @@ WECHAT_PAY_API_KEY=xxx
 ### Week 4：测试 + 上线
 
 - [ ] "能纹性"简单判断逻辑
-- [ ] localStorage 历史记录（已登录用户用数据库）
-- [ ] 端到端测试（注册→生图→充值→再生图）
+- [ ] 端到端测试（登录→生图→充值→再生图）
+- [ ] PayPal 沙盒测试 → 切换生产环境
 - [ ] 性能优化（图片懒加载、CDN 缓存）
 - [ ] SEO 基础配置（title、description、OG 图）
 - [ ] 正式域名绑定，上线发布
@@ -497,24 +541,25 @@ WECHAT_PAY_API_KEY=xxx
 
 | 风险 | 概率 | 应对方案 |
 |------|------|----------|
-| Replicate API 在中国访问慢 | 中 | Vercel 部署在海外，由服务端调用，用户无感知 |
+| Replicate API 访问慢 | 中 | Vercel 部署在海外，由服务端调用，用户无感知 |
 | 生成图质量不符合纹身要求 | 中 | 持续优化 Prompt，增加 negative prompt |
-| 微信支付审核慢/无营业执照 | 中 | 使用 Ping++ 或收钱吧（支持个人开发者快速接入） |
-| 短信验证码被刷（薅羊毛） | 中 | 图形验证码前置 + 同 IP 频率限制 |
-| 积分重复到账（支付回调重放） | 低 | 幂等处理（pay_order_id 唯一索引） |
-| 预算超支 | 低 | 限制免费用户每日生成次数（每 IP 每天 5 张） |
-| 百度翻译结果偏差 | 低 | 提供英文直接输入选项作为备选 |
+| Google OAuth 配置错误 | 低 | 提前在沙盒环境测试；配置 Authorized redirect URIs |
+| PayPal Webhook 延迟/丢失 | 低 | 前端主动轮询支付状态作为补充；设置重试机制 |
+| 积分重复到账（回调重放） | 低 | 幂等处理（paypal_order_id UNIQUE 索引） |
+| 百度翻译结果偏差（中文输入） | 低 | 允许用户直接输入英文绕过翻译 |
+| 预算超支 | 低 | 限制免费用户每日生成次数（每账号每天 3 张） |
 
 ---
 
 ## 九、后续迭代方向（Post-MVP）
 
-1. **微信一键登录** — 降低注册门槛
-2. **纹身师社区** — 入驻纹身师，用户可直接预约
-3. **展示墙 + SEO** — UGC 内容沉淀，带来自然流量
-4. **尺寸模拟** — 将设计图叠加到手臂/小腿照片上预览
-5. **会员订阅制** — 月付/年付，适合高频用户
+1. **微信一键登录** — 覆盖国内用户
+2. **Stripe 支付** — 更低手续费，更好的开发体验
+3. **纹身师社区** — 入驻纹身师，用户可直接预约
+4. **展示墙 + SEO** — UGC 内容沉淀，带来自然流量
+5. **尺寸模拟** — 将设计图叠加到手臂/小腿照片上预览
+6. **会员订阅制** — 月付/年付，适合高频用户
 
 ---
 
-*文档结束 | v1.1 更新于 2026-04-08*
+*文档结束 | v1.2 更新于 2026-04-08*
